@@ -1,5 +1,5 @@
 # 培養皿細菌生長網頁模擬
-[展示連結（Gemini 製作 20261125）](https://ng00sj.github.io/PetriDish/)
+[展示連結（Gemini 製作 20261125）](https://ng00sj.github.io/PetriDish/gemini_20261125)
 
 ## 大致內容物
 * 擴散生長
