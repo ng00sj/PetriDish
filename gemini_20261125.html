@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>細菌菌落反應擴散模擬器 | Reaction-Diffusion Petri Dish</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Inter"', '"Noto Sans TC"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            lab: {
+              bg: '#0b0f17',
+              panel: '#121826',
+              border: '#1f293d',
+              accent: '#38bdf8',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #0b0f17;
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+
+    /* 培養皿玻璃質感外框 */
+    .petri-dish-wrapper {
+      position: relative;
+      border-radius: 9999px;
+      background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.06), rgba(15, 23, 42, 0.9) 75%);
+      box-shadow:
+        0 0 0 2px rgba(148, 163, 184, 0.22),
+        0 0 0 6px rgba(15, 23, 42, 0.85),
+        0 0 0 7px rgba(56, 189, 248, 0.15),
+        inset 0 0 24px rgba(0, 0, 0, 0.85),
+        0 18px 40px -10px rgba(0, 0, 0, 0.85);
+      transition: box-shadow 0.25s ease;
+    }
+
+    .petri-dish-wrapper:hover {
+      box-shadow:
+        0 0 0 2px rgba(56, 189, 248, 0.45),
+        0 0 0 6px rgba(15, 23, 42, 0.85),
+        0 0 0 7px rgba(56, 189, 248, 0.25),
+        inset 0 0 24px rgba(0, 0, 0, 0.85),
+        0 20px 45px -10px rgba(0, 0, 0, 0.9);
+    }
+
+    .petri-canvas {
+      border-radius: 9999px;
+      image-rendering: auto;
+      cursor: crosshair;
+      display: block;
+    }
+
+    /* 自訂滑桿樣式 */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 5px;
+      border-radius: 999px;
+      background: #1e293b;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 14px;
+      width: 14px;
+      border-radius: 50%;
+      background: #38bdf8;
+      margin-top: -4.5px;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+      transition: transform 0.12s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.18);
+      background: #7dd3fc;
+    }
+
+    /* 捲軸美化 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b0f17;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1f293d;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sky-500/30 selection:text-sky-200">
+
+  <!-- 頂部導覽列 -->
+  <header class="border-b border-lab-border bg-lab-panel/90 backdrop-blur-md sticky top-0 z-30">
+    <div class="max-w-[1600px] mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/20 via-rose-500/20 to-sky-500/20 border border-sky-400/30 flex items-center justify-center shadow-inner">
+          <svg class="w-5 h-5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="9.5" cy="10" r="2.2" fill="currentColor" fill-opacity="0.3" />
+            <circle cx="14.5" cy="13.5" r="2.8" fill="currentColor" fill-opacity="0.3" />
+            <circle cx="13.5" cy="8.5" r="1.3" fill="currentColor" fill-opacity="0.5" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-100">
+              細菌菌落反應擴散模擬器
+            </h1>
+            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              2D PDE · No-Flux Neumann
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">
+            Monod 生長動力學 × 空間擁擠抑制 × 多菌株領地競爭（點擊培養皿可隨時接種新菌落）
+          </p>
+        </div>
+      </div>
+
+      <!-- 時間與狀態指示器 -->
+      <div class="flex items-center gap-2 sm:gap-4">
+        <div class="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-lab-border font-mono text-xs">
+          <div>
+            <span class="text-slate-500 mr-1">STEP</span>
+            <span id="statStep" class="text-slate-100 font-semibold">0</span>
+          </div>
+          <div class="h-3.5 w-[1px] bg-slate-800"></div>
+          <div>
+            <span class="text-slate-500 mr-1">TIME t =</span>
+            <span id="statTime" class="text-sky-400 font-semibold">0.0</span>
+          </div>
+          <div class="h-3.5 w-[1px] bg-slate-800 hidden sm:block"></div>
+          <div class="hidden sm:block">
+            <span class="text-slate-500 mr-1">MAX b</span>
+            <span id="statMaxB" class="text-amber-400 font-semibold">0.000</span>
+          </div>
+          <div class="h-3.5 w-[1px] bg-slate-800 hidden md:block"></div>
+          <div class="hidden md:block">
+            <span class="text-slate-500 mr-1">FPS</span>
+            <span id="statFps" class="text-emerald-400 font-semibold">60</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主工作區 -->
+  <main class="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-4 lg:p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
+
+    <!-- 左側/中央：視覺化主舞台 (8 cols) -->
+    <section class="lg:col-span-8 flex flex-col gap-4">
+
+      <!-- 播放與模式控制列 -->
+      <div class="bg-lab-panel border border-lab-border rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+        <!-- 播放控制按鈕群 -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btnPlayPause" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold text-xs sm:text-sm transition shadow-md shadow-sky-500/20">
+            <svg id="iconPlay" class="w-4 h-4 hidden" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg id="iconPause" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            <span id="textPlayPause">暫停模擬</span>
+          </button>
+
+          <button id="btnStep" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-medium transition" title="單步前進 (10 steps)">
+            <svg class="w-4 h-4 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 4 15 12 5 20 5 4"></polygon>
+              <line x1="19" y1="5" x2="19" y2="19"></line>
+            </svg>
+            <span>單步 (+10)</span>
+          </button>
+
+          <button id="btnReset" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-medium transition" title="重新隨機播種菌落">
+            <svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+            <span>重新播種</span>
+          </button>
+
+          <button id="btnClear" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/70 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 border border-slate-700/80 hover:border-rose-800/60 text-xs sm:text-sm font-medium transition" title="清空菌落並補滿營養鹽，方便手動點擊接種">
+            <svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+            </svg>
+            <span>清空培養皿</span>
+          </button>
+        </div>
+
+        <!-- 模擬速度與視覺模式切換 -->
+        <div class="flex flex-wrap items-center gap-3">
+          <!-- 速度選擇 -->
+          <div class="flex items-center gap-2 bg-slate-900/90 px-2.5 py-1.5 rounded-xl border border-lab-border">
+            <span class="text-xs text-slate-400">速度</span>
+            <select id="selectSpeed" class="bg-transparent text-xs font-mono text-sky-400 font-semibold focus:outline-none cursor-pointer">
+              <option value="1" class="bg-slate-900">1 step/f</option>
+              <option value="4" class="bg-slate-900">4 steps/f</option>
+              <option value="8" selected class="bg-slate-900">8 steps/f</option>
+              <option value="16" class="bg-slate-900">16 steps/f</option>
+              <option value="30" class="bg-slate-900">30 steps/f</option>
+            </select>
+          </div>
+
+          <!-- 生物量色彩模式切換 -->
+          <div class="inline-flex rounded-xl bg-slate-900 p-1 border border-lab-border text-xs">
+            <button id="modeInferno" class="px-2.5 py-1 rounded-lg font-medium transition bg-sky-500/20 text-sky-300 border border-sky-500/30">
+              Inferno 密度圖
+            </button>
+            <button id="modeStrains" class="px-2.5 py-1 rounded-lg font-medium transition text-slate-400 hover:text-slate-200">
+              多菌株領地分色
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 一鍵形態預設列 (Morphological Presets) -->
+      <div class="bg-lab-panel border border-lab-border rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2.5 shadow-md">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v20M12 7l5-3M12 12l-6-3M12 16l6-3M12 10l-4 4"/>
+            </svg>
+            形態發生預設 (Presets)：
+          </span>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="presetSmooth" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-medium bg-sky-500/20 text-sky-300 border border-sky-500/40 transition">
+            原始平滑圓盤 (Smooth Disk)
+          </button>
+          <button id="presetDendritic" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-emerald-950/60 text-slate-300 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/40 transition">
+            🌿 樹枝狀分形 (Dendritic Branching)
+          </button>
+          <button id="presetFingers" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-amber-950/60 text-slate-300 hover:text-amber-300 border border-slate-700 hover:border-amber-500/40 transition">
+            🔥 緊密指狀聚集 (Compact Fingers)
+          </button>
+          <button id="presetCahnHilliard" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-cyan-950/60 text-slate-300 hover:text-cyan-300 border border-slate-700 hover:border-cyan-500/40 transition">
+            🧬 Cahn-Hilliard 相分離迷宮 (Phase Separation)
+          </button>
+        </div>
+      </div>
+
+      <!-- 雙培養皿即時畫布區 -->
+      <div class="bg-lab-panel border border-lab-border rounded-2xl p-4 sm:p-6 shadow-xl relative">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-center justify-items-center">
+
+          <!-- 左培養皿：菌落生物量 Biomass -->
+          <div class="w-full flex flex-col items-center">
+            <div class="w-full flex items-center justify-between mb-3 px-1">
+              <div>
+                <h2 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_#f59e0b]"></span>
+                  菌落生物量 <span class="font-mono text-xs text-slate-400">Biomass b(x,y,t)</span>
+                </h2>
+              </div>
+              <span id="biomassBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                cmap: inferno
+              </span>
+            </div>
+
+            <!-- 培養皿本體 -->
+            <div class="petri-dish-wrapper p-2.5 sm:p-3 w-full max-w-[340px] aspect-square flex items-center justify-center">
+              <canvas id="canvasBiomass" class="petri-canvas w-full h-full"></canvas>
+            </div>
+
+            <!-- Inferno Colorbar 圖例 -->
+            <div class="w-full max-w-[320px] mt-3.5">
+              <div id="legendInferno" class="flex flex-col gap-1">
+                <div class="h-2.5 w-full rounded-full border border-slate-700/80" style="background: linear-gradient(90deg, #000004, #1b0c41, #4a0c6b, #781c6d, #a52c60, #cf4446, #ed6925, #fb9b06, #f7d13d, #fcffa4);"></div>
+                <div class="flex justify-between text-[10px] font-mono text-slate-400">
+                  <span>0.00</span>
+                  <span>0.25</span>
+                  <span>0.50</span>
+                  <span>0.75</span>
+                  <span>1.00 (K)</span>
+                </div>
+              </div>
+              <div id="legendStrains" class="hidden flex items-center justify-between text-[11px] text-slate-400 py-0.5">
+                <span>各菌株獨立螢光色相（亮度代表局部密度）</span>
+                <span id="activeStrainsCount" class="font-mono text-sky-400">12 株</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右培養皿：營養鹽濃度 Nutrient -->
+          <div class="w-full flex flex-col items-center">
+            <div class="w-full flex items-center justify-between mb-3 px-1">
+              <div>
+                <h2 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-teal-400 shadow-[0_0_8px_#2dd4bf]"></span>
+                  營養鹽濃度 <span class="font-mono text-xs text-slate-400">Nutrient c(x,y,t)</span>
+                </h2>
+              </div>
+              <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-teal-500/10 text-teal-300 border border-teal-500/20">
+                cmap: viridis
+              </span>
+            </div>
+
+            <!-- 培養皿本體 -->
+            <div class="petri-dish-wrapper p-2.5 sm:p-3 w-full max-w-[340px] aspect-square flex items-center justify-center">
+              <canvas id="canvasNutrient" class="petri-canvas w-full h-full"></canvas>
+              <!-- 守恆與物理狀態徽章 -->
+              <div class="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none px-2.5 py-0.5 rounded-full bg-slate-950/85 border border-slate-700/80 backdrop-blur-sm text-[10px] font-mono text-slate-300 whitespace-nowrap shadow">
+                總量 <span id="badgeTotalB" class="text-amber-400 font-semibold">0.0</span> · 峰值 <span id="badgeMaxB" class="text-sky-400 font-semibold">0.00</span>
+              </div>
+            </div>
+
+            <!-- Viridis Colorbar 圖例 -->
+            <div class="w-full max-w-[320px] mt-3.5 flex flex-col gap-1">
+              <div class="h-2.5 w-full rounded-full border border-slate-700/80" style="background: linear-gradient(90deg, #440154, #482878, #3e4989, #31688e, #26828e, #1f9e89, #35b779, #6ece58, #b5de2b, #fde725);"></div>
+              <div class="flex justify-between text-[10px] font-mono text-slate-400">
+                <span>0.00 (耗盡)</span>
+                <span>0.25</span>
+                <span>0.50</span>
+                <span>0.75</span>
+                <span>1.00 (飽和)</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 互動提示與游標探針資訊列 -->
+        <div class="mt-5 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-2 text-slate-400">
+            <span class="inline-block w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+            <span>互動操作：在任一培養皿上<strong class="text-slate-200 font-medium">點擊或拖曳</strong>可滴入新菌落液滴</span>
+          </div>
+          <div id="probeReadout" class="font-mono text-[11px] text-slate-300 bg-slate-900/90 px-3 py-1 rounded-lg border border-slate-800">
+            游標探針：將滑鼠移至培養皿內檢視局部數值
+          </div>
+        </div>
+      </div>
+
+      <!-- 演化時間軸快照列 (對應原 Python Matplotlib 6 張子圖) -->
+      <div class="bg-lab-panel border border-lab-border rounded-2xl p-4 shadow-lg">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold text-slate-100">時間演化快照序列 (Snapshots)</h3>
+            <span class="text-[11px] text-slate-400">自動每 200 steps 擷取 (step 0 ~ 1200+)</span>
+          </div>
+          <button id="btnCaptureSnapshot" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition">
+            + 手動擷取目前畫面
+          </button>
+        </div>
+
+        <div id="snapshotsContainer" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
+          <!-- 動態產生快照卡片 -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 右側：即時遙測數據與物理參數控制面板 (4 cols) -->
+    <aside class="lg:col-span-4 flex flex-col gap-4">
+
+      <!-- 即時遙測統計與趨勢圖 -->
+      <div class="bg-lab-panel border border-lab-border rounded-2xl p-4 shadow-lg">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-semibold text-slate-100">即時培養皿遙測 (Telemetry)</h3>
+          <span class="text-[11px] font-mono text-slate-400">R = 70 · N = 160×160</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 mb-3">
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5">
+            <div class="text-[10px] text-slate-400">總生物量 ∫b dA</div>
+            <div id="metricTotalBiomass" class="font-mono text-sm font-bold text-amber-400 mt-0.5">0.0</div>
+          </div>
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5">
+            <div class="text-[10px] text-slate-400">平均營養濃度 c̄</div>
+            <div id="metricMeanNutrient" class="font-mono text-sm font-bold text-teal-400 mt-0.5">1.000</div>
+          </div>
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5">
+            <div class="text-[10px] text-slate-400">菌落覆蓋率</div>
+            <div id="metricCoverage" class="font-mono text-sm font-bold text-sky-400 mt-0.5">0.0%</div>
+          </div>
+        </div>
+
+        <!-- 趨勢折線圖 -->
+        <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2">
+          <div class="flex items-center justify-between text-[10px] text-slate-400 mb-1 px-1">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span>總生物量</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-teal-400"></span>平均營養鹽</span>
+          </div>
+          <canvas id="canvasChart" class="w-full h-24 block"></canvas>
+        </div>
+      </div>
+
+      <!-- 物理參數滑桿控制區 -->
+      <div class="bg-lab-panel border border-lab-border rounded-2xl p-4 shadow-lg flex-1 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-slate-100">無因次 PDE 參數設定</h3>
+            <button id="btnResetParams" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+              重設預設值
+            </button>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <!-- chi (聚集強度) -->
+            <div class="p-2.5 rounded-xl bg-emerald-950/20 border border-emerald-500/20">
+              <div class="flex justify-between mb-1">
+                <label for="paramChi" class="text-emerald-300 font-semibold">自我聚集強度 <span class="font-mono text-emerald-400/80">χ (Keller-Segel)</span></label>
+                <span id="valChi" class="font-mono text-emerald-400 font-bold">0.00</span>
+              </div>
+              <input id="paramChi" type="range" min="0.00" max="1.20" step="0.02" value="0.00" class="w-full" />
+              <p class="text-[10px] text-slate-400 mt-0.5">嚴格質量守恆體積填充通量：細菌往高密度梯度集中，逼近 K 時自動飽和排斥</p>
+            </div>
+
+            <!-- Cahn-Hilliard 相分離控制區 -->
+            <div class="p-2.5 rounded-xl bg-cyan-950/25 border border-cyan-500/25 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-cyan-300 font-semibold">Cahn-Hilliard 相分離 (Phase Separation)</span>
+                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">4th-Order Flux</span>
+              </div>
+              <div>
+                <div class="flex justify-between mb-1">
+                  <label for="paramChM" class="text-cyan-200/90 font-medium">相分離遷移率 <span class="font-mono text-cyan-400/80">M_ch</span></label>
+                  <span id="valChM" class="font-mono text-cyan-400 font-bold">0.000</span>
+                </div>
+                <input id="paramChM" type="range" min="0.000" max="0.250" step="0.005" value="0.000" class="w-full" />
+              </div>
+              <div>
+                <div class="flex justify-between mb-1">
+                  <label for="paramChKappa" class="text-cyan-200/90 font-medium">相界表面張力寬度 <span class="font-mono text-cyan-400/80">κ_ch</span></label>
+                  <span id="valChKappa" class="font-mono text-cyan-400 font-bold">0.60</span>
+                </div>
+                <input id="paramChKappa" type="range" min="0.10" max="1.60" step="0.05" value="0.60" class="w-full" />
+              </div>
+              <p class="text-[10px] text-slate-400 leading-snug">
+                雙井自由能 f(φ)=φ²(1−φ)² 驅動低密度區自發凝聚成高密度生物膜相（φ→1），κ_ch 越大相界越平滑且條紋越寬
+              </p>
+            </div>
+
+            <!-- sigma_eta (生長隨機性) -->
+            <div class="p-2.5 rounded-xl bg-purple-950/20 border border-purple-500/20">
+              <div class="flex justify-between mb-1">
+                <label for="paramSigma" class="text-purple-300 font-semibold">生長隨機雜訊 <span class="font-mono text-purple-400/80">σ_η (Noise)</span></label>
+                <span id="valSigma" class="font-mono text-purple-400 font-bold">0.00</span>
+              </div>
+              <input id="paramSigma" type="range" min="0.00" max="1.20" step="0.02" value="0.00" class="w-full" />
+              <p class="text-[10px] text-slate-400 mt-0.5">生長前緣乘性白雜訊（√dt 縮放），打破圓形對稱性以誘發樹枝分叉</p>
+            </div>
+
+            <!-- Db -->
+            <div>
+              <div class="flex justify-between mb-1">
+                <label for="paramDb" class="text-slate-300 font-medium">生物量擴散係數 <span class="font-mono text-slate-400">Db</span></label>
+                <span id="valDb" class="font-mono text-sky-400 font-semibold">0.080</span>
+              </div>
+              <input id="paramDb" type="range" min="0.005" max="0.20" step="0.005" value="0.08" class="w-full" />
+            </div>
+
+            <!-- Dc -->
+            <div>
+              <div class="flex justify-between mb-1">
+                <label for="paramDc" class="text-slate-300 font-medium">營養鹽擴散係數 <span class="font-mono text-slate-400">Dc</span></label>
+                <span id="valDc" class="font-mono text-sky-400 font-semibold">0.350</span>
+              </div>
+              <input id="paramDc" type="range" min="0.05" max="0.80" step="0.01" value="0.35" class="w-full" />
+            </div>
+
+            <!-- mu_max -->
+            <div>
+              <div class="flex justify-between mb-1">
+                <label for="paramMu" class="text-slate-300 font-medium">最大比生長速率 <span class="font-mono text-slate-400">μ_max</span></label>
+                <span id="valMu" class="font-mono text-sky-400 font-semibold">0.035</span>
+              </div>
+              <input id="paramMu" type="range" min="0.005" max="0.10" step="0.001" value="0.035" class="w-full" />
+            </div>
+
+            <!-- Kc -->
+            <div>
+              <div class="flex justify-between mb-1">
+                <label for="paramKc" class="text-slate-300 font-medium">Monod 半飽和常數 <span class="font-mono text-slate-400">Kc</span></label>
+                <span id="valKc" class="font-mono text-sky-400 font-semibold">0.200</span>
+              </div>
+              <input id="paramKc" type="range" min="0.02" max="0.60" step="0.01" value="0.20" class="w-full" />
+            </div>
+
+            <!-- q -->
+            <div>
+              <div class="flex justify-between mb-1">
+                <label for="paramQ" class="text-slate-300 font-medium">營養消耗係數 <span class="font-mono text-slate-400">q</span></label>
+                <span id="valQ" class="font-mono text-sky-400 font-semibold">2.00</span>
+              </div>
+              <input id="paramQ" type="range" min="0.5" max="5.0" step="0.1" value="2.0" class="w-full" />
+            </div>
+
+            <!-- s -->
+            <div>
+              <div class="flex justify-between mb-1">
+                <label for="paramS" class="text-slate-300 font-medium">基質營養補充率 <span class="font-mono text-slate-400">s</span></label>
+                <span id="valS" class="font-mono text-sky-400 font-semibold">0.0010</span>
+              </div>
+              <input id="paramS" type="range" min="0.0000" max="0.0050" step="0.0002" value="0.0010" class="w-full" />
+            </div>
+
+            <!-- num_colonies -->
+            <div class="pt-2 border-t border-slate-800">
+              <div class="flex justify-between mb-1">
+                <label for="paramColonies" class="text-slate-300 font-medium">初始隨機菌落數 <span class="font-mono text-slate-400">num_colonies</span></label>
+                <span id="valColonies" class="font-mono text-amber-400 font-semibold">12</span>
+              </div>
+              <input id="paramColonies" type="range" min="1" max="24" step="1" value="12" class="w-full" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 可摺疊數學模型方程式參考卡片 -->
+        <details class="mt-4 pt-3 border-t border-slate-800/80 group" open>
+          <summary class="cursor-pointer list-none flex items-center justify-between text-xs font-semibold text-slate-200 hover:text-sky-400 transition select-none">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 19h16M4 5h16M9 5l6 14M15 5L9 19"/>
+              </svg>
+              完整偏微分方程式參考 (Governing PDEs)
+            </span>
+            <span class="text-[10px] font-mono text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div class="mt-2 bg-slate-950/75 border border-slate-800/90 rounded-xl p-3 font-mono text-[10px] leading-relaxed text-slate-300 space-y-1.5">
+            <div>
+              <span class="text-amber-400 font-semibold">1. 菌株生物量演化：</span><br/>
+              ∂bᵢ/∂t = Db∇²bᵢ − ∇·[ χ·bᵢ·(1 − b_tot/K)₊·∇b_tot ] + ∇·[ M_ch·(bᵢ/b_tot)·∇μ_ch ] + μ(c)·bᵢ·(1 − b_tot/K)₊·(1 + σ_η√dt·ηᵢ)
+            </div>
+            <div>
+              <span class="text-cyan-400 font-semibold">2. Cahn-Hilliard 化學勢：</span><br/>
+              μ_ch = 2φ(1 − φ)(1 − 2φ) − κ_ch·∇²φ ,  φ = b_tot / K
+            </div>
+            <div>
+              <span class="text-teal-400 font-semibold">3. 營養濃度場演化：</span><br/>
+              ∂c/∂t = Dc∇²c − q·μ(c)·b_tot + s·(1 − c)
+            </div>
+            <div class="text-slate-400 pt-1 border-t border-slate-800/80">
+              • Monod 動力學：μ(c) = μ_max · c / (Kc + c)<br/>
+              • 零通量邊界 (Neumann)：∇bᵢ·n = 0, ∇c·n = 0, ∇μ_ch·n = 0 on ∂Ω<br/>
+              • 有限體積迎風法保證聚集與相分離通量嚴格質量守恆
+            </div>
+          </div>
+        </details>
+      </div>
+
+    </aside>
+  </main>
+
+  <script>
+    /**
+     * ============================================================================
+     * 細菌菌落反應擴散與守恆聚集模擬器 (2D Reaction-Diffusion-Aggregation PDE)
+     * - 網格解析度 N = 160, dx = 1.0, dt = 0.15, 圓形培養皿遮罩 R = 70
+     * - 零通量 Neumann 邊界條件
+     * - 有限體積法 (Finite Volume Upwind Flux) 計算體積填充聚集通量，保證嚴格質量守恆
+     * - 乘性常態白雜訊 (Box-Muller, sqrt(dt) 縮放) 誘發生長前緣對稱性破缺
+     * ============================================================================
+     */
+
+    // 1. 計算網格與常數定義
+    const N = 160;
+    const SIZE = N * N;
+    const dx = 1.0;
+    const invDx = 1.0 / dx;
+    const invDx2 = 1.0 / (dx * dx);
+    const dt = 0.15;
+    const sqrtDt = Math.sqrt(dt);
+    const R = 70;
+    const K = 1.0;
+    const MAX_STRAINS = 36;
+
+    // 預設無因次參數（原始平滑圓盤基準）
+    const DEFAULT_PARAMS = {
+      chi: 0.0,
+      M_ch: 0.0,
+      kappa_ch: 0.60,
+      sigma_eta: 0.0,
+      Db: 0.08,
+      Dc: 0.35,
+      mu_max: 0.035,
+      Kc: 0.2,
+      q: 2.0,
+      s: 0.001,
+      num_colonies: 12
+    };
+
+    // 形態發生預設組合
+    const PRESETS = {
+      smooth: {
+        chi: 0.0,
+        M_ch: 0.0,
+        kappa_ch: 0.60,
+        sigma_eta: 0.0,
+        Db: 0.08,
+        Dc: 0.35,
+        mu_max: 0.035,
+        Kc: 0.20,
+        q: 2.0,
+        s: 0.001
+      },
+      dendritic: {
+        chi: 0.42,
+        M_ch: 0.0,
+        kappa_ch: 0.60,
+        sigma_eta: 0.65,
+        Db: 0.018,
+        Dc: 0.45,
+        mu_max: 0.045,
+        Kc: 0.25,
+        q: 3.2,
+        s: 0.0002
+      },
+      fingers: {
+        chi: 0.65,
+        M_ch: 0.0,
+        kappa_ch: 0.60,
+        sigma_eta: 0.40,
+        Db: 0.022,
+        Dc: 0.38,
+        mu_max: 0.042,
+        Kc: 0.22,
+        q: 2.6,
+        s: 0.0005
+      },
+      cahnHilliard: {
+        chi: 0.0,
+        M_ch: 0.14,
+        kappa_ch: 0.65,
+        sigma_eta: 0.55,
+        Db: 0.008,
+        Dc: 0.42,
+        mu_max: 0.044,
+        Kc: 0.22,
+        q: 2.8,
+        s: 0.0003
+      }
+    };
+
+    let params = { ...DEFAULT_PARAMS };
+
+    // 2. 預計算圓形培養皿遮罩、鄰居索引表與 8 鄰居各向同性有限體積介面 (Edges)
+    const mask = new Uint8Array(SIZE);
+    const dishIndices = [];
+    const nUp = new Int32Array(SIZE);
+    const nDown = new Int32Array(SIZE);
+    const nLeft = new Int32Array(SIZE);
+    const nRight = new Int32Array(SIZE);
+
+    // 有限體積法：包含水平/垂直介面 (權重 2/3) 與對角線介面 (權重 1/3, 除以距離平方 2 -> 1/6)
+    // 消除 4 鄰居十字網格偽影，並嚴格保持總質量守恆
+    const edgeA = [];
+    const edgeB = [];
+    const edgeWeight = [];
+
+    let dishCellCount = 0;
+
+    (function initDomain() {
+      const half = N >> 1;
+      const rSq = R * R;
+
+      for (let y = 0; y < N; y++) {
+        const dy = y - half;
+        for (let x = 0; x < N; x++) {
+          const dxVal = x - half;
+          const idx = y * N + x;
+          if (dxVal * dxVal + dy * dy <= rSq) {
+            mask[idx] = 1;
+            dishIndices.push(idx);
+            dishCellCount++;
+          } else {
+            mask[idx] = 0;
+          }
+        }
+      }
+
+      for (let i = 0; i < dishIndices.length; i++) {
+        const idx = dishIndices[i];
+        const x = idx % N;
+        const y = (idx / N) | 0;
+
+        const upIdx = y > 0 ? idx - N : idx;
+        const downIdx = y < N - 1 ? idx + N : idx;
+        const leftIdx = x > 0 ? idx - 1 : idx;
+        const rightIdx = x < N - 1 ? idx + 1 : idx;
+
+        nUp[idx] = mask[upIdx] ? upIdx : idx;
+        nDown[idx] = mask[downIdx] ? downIdx : idx;
+        nLeft[idx] = mask[leftIdx] ? leftIdx : idx;
+        nRight[idx] = mask[rightIdx] ? rightIdx : idx;
+
+        // 軸向介面 (右、下)，權重 = 2/3
+        if (x < N - 1 && mask[idx + 1]) {
+          edgeA.push(idx);
+          edgeB.push(idx + 1);
+          edgeWeight.push(2.0 / 3.0);
+        }
+        if (y < N - 1 && mask[idx + N]) {
+          edgeA.push(idx);
+          edgeB.push(idx + N);
+          edgeWeight.push(2.0 / 3.0);
+        }
+        // 對角線介面 (右下、左下)，各向同性權重 = (1/3) / (sqrt(2)^2) = 1/6
+        if (x < N - 1 && y < N - 1 && mask[idx + N + 1]) {
+          edgeA.push(idx);
+          edgeB.push(idx + N + 1);
+          edgeWeight.push(1.0 / 6.0);
+        }
+        if (x > 0 && y < N - 1 && mask[idx + N - 1]) {
+          edgeA.push(idx);
+          edgeB.push(idx + N - 1);
+          edgeWeight.push(1.0 / 6.0);
+        }
+      }
+    })();
+
+    const edgeA_Arr = new Int32Array(edgeA);
+    const edgeB_Arr = new Int32Array(edgeB);
+    const edgeWeight_Arr = new Float32Array(edgeWeight);
+    const numEdges = edgeA_Arr.length;
+
+    // 3. 預計算 Matplotlib 精準色表 (Inferno & Viridis 256 階 LUT)
+    function buildColormapLUT(stops) {
+      const lut = new Uint8ClampedArray(256 * 3);
+      for (let i = 0; i < 256; i++) {
+        const t = i / 255;
+        let idx = 0;
+        while (idx < stops.length - 2 && t > stops[idx + 1][0]) {
+          idx++;
+        }
+        const [t0, c0] = stops[idx];
+        const [t1, c1] = stops[idx + 1];
+        const localT = (t - t0) / (t1 - t0);
+        lut[i * 3]     = Math.round(c0[0] + (c1[0] - c0[0]) * localT);
+        lut[i * 3 + 1] = Math.round(c0[1] + (c1[1] - c0[1]) * localT);
+        lut[i * 3 + 2] = Math.round(c0[2] + (c1[2] - c0[2]) * localT);
+      }
+      return lut;
+    }
+
+    const INFERNO_LUT = buildColormapLUT([
+      [0.00, [0, 0, 4]],
+      [0.13, [27, 12, 65]],
+      [0.25, [74, 12, 107]],
+      [0.38, [120, 28, 109]],
+      [0.50, [165, 44, 96]],
+      [0.63, [207, 68, 70]],
+      [0.75, [237, 105, 37]],
+      [0.88, [251, 155, 6]],
+      [0.95, [247, 209, 61]],
+      [1.00, [252, 255, 164]]
+    ]);
+
+    const VIRIDIS_LUT = buildColormapLUT([
+      [0.00, [68, 1, 84]],
+      [0.13, [72, 40, 120]],
+      [0.25, [62, 73, 137]],
+      [0.38, [49, 104, 142]],
+      [0.50, [38, 130, 142]],
+      [0.63, [31, 158, 137]],
+      [0.75, [53, 183, 121]],
+      [0.88, [110, 206, 88]],
+      [0.95, [181, 222, 43]],
+      [1.00, [253, 231, 37]]
+    ]);
+
+    // 為多菌株模式產生高辨識度螢光色盤
+    const STRAIN_COLORS = Array.from({ length: MAX_STRAINS }, (_, i) => {
+      const hue = (i * 137.508) % 360; // 黃金角分佈確保相鄰編號顏色對比鮮明
+      const s = 0.88, l = 0.58;
+      const c = (1 - Math.abs(2 * l - 1)) * s;
+      const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+      const m = l - c / 2;
+      let r = 0, g = 0, b = 0;
+      if (hue < 60)      { r = c; g = x; b = 0; }
+      else if (hue < 120){ r = x; g = c; b = 0; }
+      else if (hue < 180){ r = 0; g = c; b = x; }
+      else if (hue < 240){ r = 0; g = x; b = c; }
+      else if (hue < 300){ r = x; g = 0; b = c; }
+      else               { r = c; g = 0; b = x; }
+      return [
+        Math.round((r + m) * 255),
+        Math.round((g + m) * 255),
+        Math.round((b + m) * 255)
+      ];
+    });
+
+    // 4. 模擬狀態緩衝區 (TypedArrays 零 GC 負擔)
+    let colonies = [];     // Array of Float32Array(SIZE)
+    let nextColonies = []; // Double buffer
+    let totalB = new Float32Array(SIZE);
+    let sensedB = new Float32Array(SIZE);     // 空間平滑感知密度，消除棋盤格數值震盪
+    let chemPotCH = new Float32Array(SIZE);   // Cahn-Hilliard 化學勢場 μ_ch
+    let edgeFluxBase = new Float32Array(numEdges);
+    let cellOutflow = new Float32Array(SIZE); // 單格總流出通量累加器（嚴格防止過抽負值震盪）
+    let nutrient = new Float32Array(SIZE);
+    let nextNutrient = new Float32Array(SIZE);
+
+    let stepCount = 0;
+    let isRunning = true;
+    let stepsPerFrame = 8;
+    let renderMode = 'inferno'; // 'inferno' | 'strains'
+    let snapshots = [];
+    let historyTelemetry = []; // { t, biomass, nutrient }
+
+    // Box-Muller 快速常態分佈雜訊產生器 (N(0, 1))
+    let spareGaussian = null;
+    function nextGaussian() {
+      if (spareGaussian !== null) {
+        const val = spareGaussian;
+        spareGaussian = null;
+        return val;
+      }
+      let u = 0, v = 0, s = 0;
+      do {
+        u = Math.random() * 2.0 - 1.0;
+        v = Math.random() * 2.0 - 1.0;
+        s = u * u + v * v;
+      } while (s >= 1.0 || s === 0.0);
+      const mul = Math.sqrt(-2.0 * Math.log(s) / s);
+      spareGaussian = v * mul;
+      return u * mul;
+    }
+
+    // 5. 初始化與播種函式
+    function addColonyGaussian(cx, cy, sigma, amplitude) {
+      if (colonies.length >= MAX_STRAINS) {
+        // 若達上限，將最微弱或最早的菌株合併騰出空間
+        colonies.shift();
+        nextColonies.shift();
+      }
+      const arr = new Float32Array(SIZE);
+      const nextArr = new Float32Array(SIZE);
+      const half = N >> 1;
+      const twoSigmaSq = 2 * sigma * sigma;
+
+      for (let i = 0; i < dishIndices.length; i++) {
+        const idx = dishIndices[i];
+        const x = (idx % N) - half;
+        const y = ((idx / N) | 0) - half;
+        const d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+        if (d2 < twoSigmaSq * 9) { // 3 sigma 截斷加速
+          arr[idx] = amplitude * Math.exp(-d2 / twoSigmaSq);
+        }
+      }
+      colonies.push(arr);
+      nextColonies.push(nextArr);
+      recomputeTotalBiomass();
+      updateStrainsBadge();
+    }
+
+    function recomputeTotalBiomass() {
+      totalB.fill(0);
+      const numC = colonies.length;
+      for (let i = 0; i < dishIndices.length; i++) {
+        const idx = dishIndices[i];
+        let sum = 0;
+        for (let k = 0; k < numC; k++) {
+          sum += colonies[k][idx];
+        }
+        totalB[idx] = sum;
+      }
+    }
+
+    function seedRandomColonies() {
+      colonies = [];
+      nextColonies = [];
+      totalB.fill(0);
+      nutrient.fill(0);
+      nextNutrient.fill(0);
+      stepCount = 0;
+      snapshots = [];
+      historyTelemetry = [];
+
+      // 初始化營養鹽 c = mask.astype(float)
+      for (let i = 0; i < dishIndices.length; i++) {
+        nutrient[dishIndices[i]] = 1.0;
+      }
+
+      // 隨機在半徑 R * 0.8 內播種高斯菌落
+      const maxR = R * 0.8;
+      const maxRSq = maxR * maxR;
+      for (let k = 0; k < params.num_colonies; k++) {
+        let cx = 0, cy = 0;
+        while (true) {
+          cx = (Math.random() * 2 - 1) * maxR;
+          cy = (Math.random() * 2 - 1) * maxR;
+          if (cx * cx + cy * cy < maxRSq) break;
+        }
+        const sigma = 2.0 + Math.random() * 1.5;      // [2.0, 3.5]
+        const amplitude = 0.15 + Math.random() * 0.15; // [0.15, 0.30]
+        addColonyGaussian(cx, cy, sigma, amplitude);
+      }
+
+      captureSnapshot();
+      recordTelemetry();
+      renderSnapshotsStrip();
+      renderAll();
+    }
+
+    function clearDish() {
+      colonies = [];
+      nextColonies = [];
+      totalB.fill(0);
+      nutrient.fill(0);
+      for (let i = 0; i < dishIndices.length; i++) {
+        nutrient[dishIndices[i]] = 1.0;
+      }
+      stepCount = 0;
+      snapshots = [];
+      historyTelemetry = [];
+      updateStrainsBadge();
+      renderSnapshotsStrip();
+      renderAll();
+    }
+
+    // 6. 核心 PDE 顯式歐拉 + 守恆有限體積通量時間步進
+    function stepSimulation() {
+      const { chi, M_ch, kappa_ch, sigma_eta, Db, Dc, mu_max, Kc, q, s } = params;
+      const numC = colonies.length;
+      const invK = 1.0 / K;
+      const hasAggregation = chi > 1e-6;
+      const hasCahnHilliard = M_ch > 1e-6;
+      const hasNoise = sigma_eta > 1e-6;
+
+      // 步驟 A：計算擴散項 + 乘性隨機 Monod 生長項，存入 nextColonies
+      for (let k = 0; k < numC; k++) {
+        const bCurr = colonies[k];
+        const bNext = nextColonies[k];
+
+        for (let i = 0; i < dishIndices.length; i++) {
+          const idx = dishIndices[i];
+          const bVal = bCurr[idx];
+          const tb = totalB[idx];
+          const cVal = nutrient[idx];
+
+          // 零通量 Neumann 邊界條件下的離散拉普拉斯算子
+          const lapB = (
+            bCurr[nUp[idx]] +
+            bCurr[nDown[idx]] +
+            bCurr[nLeft[idx]] +
+            bCurr[nRight[idx]] -
+            4.0 * bVal
+          ) * invDx2;
+
+          // 擁擠抑制因子 max(0, 1 - total_b / K)
+          const crowding = tb < K ? (1.0 - tb * invK) : 0.0;
+
+          // Monod 比生長速率
+          const mu = (mu_max * cVal) / (Kc + cVal);
+
+          // 乘性常態分佈生長雜訊 (Euler-Maruyama 縮放 sqrt(dt))
+          let noiseFactor = 1.0;
+          if (hasNoise && bVal > 1e-6 && crowding > 0.0) {
+            noiseFactor = Math.max(0.0, 1.0 + sigma_eta * sqrtDt * nextGaussian());
+          }
+
+          let updated = bVal + dt * (Db * lapB + mu * bVal * crowding * noiseFactor);
+          bNext[idx] = updated > 0.0 ? updated : 0.0;
+        }
+      }
+
+      // 步驟 B：守恆型體積填充自我聚集通量 (Conservative Isotropic Finite-Volume Flux)
+      if (hasAggregation && numC > 0) {
+        // 1. 計算空間平滑感知密度 sensedB（消除單格黑白棋盤震盪）
+        for (let i = 0; i < dishIndices.length; i++) {
+          const idx = dishIndices[i];
+          sensedB[idx] = 0.5 * totalB[idx] + 0.125 * (
+            totalB[nUp[idx]] + totalB[nDown[idx]] + totalB[nLeft[idx]] + totalB[nRight[idx]]
+          );
+        }
+
+        // 2. 預計算每條各向同性介面的基礎體積填充趨化速率
+        for (let e = 0; e < numEdges; e++) {
+          const a = edgeA_Arr[e];
+          const b = edgeB_Arr[e];
+          const bFace = 0.5 * (totalB[a] + totalB[b]);
+          const crowdFace = bFace < K ? (1.0 - bFace * invK) : 0.0;
+          const gradSensed = (sensedB[b] - sensedB[a]) * invDx;
+          edgeFluxBase[e] = dt * chi * crowdFace * gradSensed * edgeWeight_Arr[e];
+        }
+
+        // 3. 對每個菌株施加迎風有限體積通量，並以細胞最大總流出比例 (45%) 限制防震盪
+        for (let k = 0; k < numC; k++) {
+          const bNext = nextColonies[k];
+          cellOutflow.fill(0);
+
+          for (let e = 0; e < numEdges; e++) {
+            const fBase = edgeFluxBase[e];
+            if (fBase > 0.0) {
+              const a = edgeA_Arr[e];
+              cellOutflow[a] += fBase * bNext[a];
+            } else if (fBase < 0.0) {
+              const b = edgeB_Arr[e];
+              cellOutflow[b] += (-fBase) * bNext[b];
+            }
+          }
+
+          for (let e = 0; e < numEdges; e++) {
+            const fBase = edgeFluxBase[e];
+            if (fBase === 0.0) continue;
+
+            const a = edgeA_Arr[e];
+            const b = edgeB_Arr[e];
+
+            if (fBase > 0.0) {
+              const avail = bNext[a];
+              if (avail > 1e-9) {
+                const outSum = cellOutflow[a];
+                const scale = outSum > 0.45 * avail ? (0.45 * avail) / outSum : 1.0;
+                const dM = fBase * avail * scale;
+                bNext[a] -= dM;
+                bNext[b] += dM;
+              }
+            } else {
+              const avail = bNext[b];
+              if (avail > 1e-9) {
+                const outSum = cellOutflow[b];
+                const scale = outSum > 0.45 * avail ? (0.45 * avail) / outSum : 1.0;
+                const dM = (-fBase) * avail * scale;
+                bNext[b] -= dM;
+                bNext[a] += dM;
+              }
+            }
+          }
+        }
+      }
+
+      // 步驟 B2：守恆型 Cahn-Hilliard 相分離通量 (∇·[ M_ch · (bᵢ/b_tot) · ∇μ_ch ])
+      if (hasCahnHilliard && numC > 0) {
+        // 先更新當前總生物量場 (sensedB 暫存最新 Σ bNext)
+        for (let i = 0; i < dishIndices.length; i++) {
+          const idx = dishIndices[i];
+          let sum = 0.0;
+          for (let k = 0; k < numC; k++) sum += nextColonies[k][idx];
+          sensedB[idx] = sum;
+        }
+
+        // 1. 計算化學勢 μ_ch = f'(φ) - κ_ch ∇²φ，其中雙井勢導數 f'(φ) = 2φ(1 - φ)(1 - 2φ)
+        for (let i = 0; i < dishIndices.length; i++) {
+          const idx = dishIndices[i];
+          const phi = sensedB[idx] * invK;
+          const phiUp = sensedB[nUp[idx]] * invK;
+          const phiDown = sensedB[nDown[idx]] * invK;
+          const phiLeft = sensedB[nLeft[idx]] * invK;
+          const phiRight = sensedB[nRight[idx]] * invK;
+          const lapPhi = (phiUp + phiDown + phiLeft + phiRight - 4.0 * phi) * invDx2;
+          const dfdPhi = 2.0 * phi * (1.0 - phi) * (1.0 - 2.0 * phi);
+          chemPotCH[idx] = dfdPhi - kappa_ch * lapPhi;
+        }
+
+        // 2. 預計算各向同性介面上的化學勢梯度驅動速率 J_ch = -M_ch ∇μ_ch
+        //    當 μ_ch[a] > μ_ch[b] 時，通量由 a 流向 b (fBase > 0)
+        for (let e = 0; e < numEdges; e++) {
+          const a = edgeA_Arr[e];
+          const b = edgeB_Arr[e];
+          const negGradMu = (chemPotCH[a] - chemPotCH[b]) * invDx;
+          // 遷移率採幾何/算術平滑，僅在有細菌存在的區域傳輸相分離通量
+          const mobFace = 0.5 * (sensedB[a] + sensedB[b]) * invK;
+          edgeFluxBase[e] = dt * M_ch * mobFace * negGradMu * edgeWeight_Arr[e];
+        }
+
+        // 3. 對各菌株依迎風比例分配守恆通量，並施加單格 40% 總流出穩定限制器（避免四階導數顯式發散）
+        for (let k = 0; k < numC; k++) {
+          const bNext = nextColonies[k];
+          cellOutflow.fill(0);
+
+          for (let e = 0; e < numEdges; e++) {
+            const fBase = edgeFluxBase[e];
+            if (fBase > 0.0) {
+              const a = edgeA_Arr[e];
+              const shareA = sensedB[a] > 1e-9 ? bNext[a] / sensedB[a] : 0.0;
+              cellOutflow[a] += fBase * shareA * K;
+            } else if (fBase < 0.0) {
+              const b = edgeB_Arr[e];
+              const shareB = sensedB[b] > 1e-9 ? bNext[b] / sensedB[b] : 0.0;
+              cellOutflow[b] += (-fBase) * shareB * K;
+            }
+          }
+
+          for (let e = 0; e < numEdges; e++) {
+            const fBase = edgeFluxBase[e];
+            if (fBase === 0.0) continue;
+
+            const a = edgeA_Arr[e];
+            const b = edgeB_Arr[e];
+
+            if (fBase > 0.0) {
+              const avail = bNext[a];
+              if (avail > 1e-9 && sensedB[a] > 1e-9) {
+                const shareA = avail / sensedB[a];
+                const outSum = cellOutflow[a];
+                const scale = outSum > 0.40 * avail ? (0.40 * avail) / outSum : 1.0;
+                const dM = fBase * shareA * K * scale;
+                bNext[a] -= dM;
+                bNext[b] += dM;
+              }
+            } else {
+              const avail = bNext[b];
+              if (avail > 1e-9 && sensedB[b] > 1e-9) {
+                const shareB = avail / sensedB[b];
+                const outSum = cellOutflow[b];
+                const scale = outSum > 0.40 * avail ? (0.40 * avail) / outSum : 1.0;
+                const dM = (-fBase) * shareB * K * scale;
+                bNext[b] -= dM;
+                bNext[a] += dM;
+              }
+            }
+          }
+        }
+      }
+
+      // 步驟 C：更新營養鹽場 c(x,y,t) 並同步更新總生物量 totalB
+      for (let i = 0; i < dishIndices.length; i++) {
+        const idx = dishIndices[i];
+        const tb = totalB[idx];
+        const cVal = nutrient[idx];
+
+        const lapC = (
+          nutrient[nUp[idx]] +
+          nutrient[nDown[idx]] +
+          nutrient[nLeft[idx]] +
+          nutrient[nRight[idx]] -
+          4.0 * cVal
+        ) * invDx2;
+
+        const mu = (mu_max * cVal) / (Kc + cVal);
+        const updatedC = cVal + dt * (Dc * lapC - q * mu * tb + s * (1.0 - cVal));
+        nextNutrient[idx] = updatedC > 0.0 ? updatedC : 0.0;
+
+        let newTb = 0.0;
+        for (let k = 0; k < numC; k++) {
+          newTb += nextColonies[k][idx];
+        }
+        totalB[idx] = newTb;
+      }
+
+      // 交換雙緩衝指標
+      const tempCol = colonies;
+      colonies = nextColonies;
+      nextColonies = tempCol;
+
+      const tempNut = nutrient;
+      nutrient = nextNutrient;
+      nextNutrient = tempNut;
+
+      stepCount++;
+
+      // 每 200 步自動擷取快照（最多保留 7 張對應原始 t = 0..1200）
+      if (stepCount % 200 === 0 && snapshots.length < 7) {
+        captureSnapshot();
+        renderSnapshotsStrip();
+      }
+      if (stepCount % 10 === 0) {
+        recordTelemetry();
+      }
+    }
+
+    // 7. 離屏渲染與畫布繪製
+    const canvasBiomass = document.getElementById('canvasBiomass');
+    const canvasNutrient = document.getElementById('canvasNutrient');
+    const ctxBiomass = canvasBiomass.getContext('2d');
+    const ctxNutrient = canvasNutrient.getContext('2d');
+
+    const offscreenB = document.createElement('canvas');
+    offscreenB.width = N;
+    offscreenB.height = N;
+    const offCtxB = offscreenB.getContext('2d');
+    const imgDataB = offCtxB.createImageData(N, N);
+
+    const offscreenC = document.createElement('canvas');
+    offscreenC.width = N;
+    offscreenC.height = N;
+    const offCtxC = offscreenC.getContext('2d');
+    const imgDataC = offCtxC.createImageData(N, N);
+
+    function resizeCanvases() {
+      [canvasBiomass, canvasNutrient].forEach(c => {
+        const rect = c.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const size = Math.max(160, Math.round(rect.width * dpr));
+        if (c.width !== size || c.height !== size) {
+          c.width = size;
+          c.height = size;
+        }
+      });
+      renderAll();
+    }
+
+    function renderAll() {
+      const dataB = imgDataB.data;
+      const dataC = imgDataC.data;
+      const numC = colonies.length;
+
+      let maxB = 0.0;
+      let sumB = 0.0;
+      let sumC = 0.0;
+      let coveredCells = 0;
+
+      for (let y = 0; y < N; y++) {
+        // origin="lower"：Canvas y=0 在頂端，對應模擬網格 y = N - 1
+        const simY = N - 1 - y;
+        const rowSimOffset = simY * N;
+        const rowImgOffset = y * N;
+
+        for (let x = 0; x < N; x++) {
+          const simIdx = rowSimOffset + x;
+          const pIdx = (rowImgOffset + x) << 2;
+
+          if (!mask[simIdx]) {
+            // 培養皿外圍深色背景
+            dataB[pIdx] = 9; dataB[pIdx + 1] = 13; dataB[pIdx + 2] = 22; dataB[pIdx + 3] = 255;
+            dataC[pIdx] = 9; dataC[pIdx + 1] = 13; dataC[pIdx + 2] = 22; dataC[pIdx + 3] = 255;
+            continue;
+          }
+
+          const bVal = totalB[simIdx];
+          const cVal = nutrient[simIdx];
+
+          if (bVal > maxB) maxB = bVal;
+          sumB += bVal;
+          sumC += cVal;
+          if (bVal > 0.05) coveredCells++;
+
+          // 渲染生物量畫布
+          if (renderMode === 'inferno' || numC === 0) {
+            const normB = Math.min(255, Math.max(0, Math.round((bVal / K) * 255)));
+            const lutIdx = normB * 3;
+            dataB[pIdx]     = INFERNO_LUT[lutIdx];
+            dataB[pIdx + 1] = INFERNO_LUT[lutIdx + 1];
+            dataB[pIdx + 2] = INFERNO_LUT[lutIdx + 2];
+            dataB[pIdx + 3] = 255;
+          } else {
+            // 多菌株領地分色（依各菌株局部密度加權混色）
+            let rAcc = 0, gAcc = 0, bAcc = 0;
+            for (let k = 0; k < numC; k++) {
+              const bk = colonies[k][simIdx];
+              if (bk > 1e-4) {
+                const col = STRAIN_COLORS[k % MAX_STRAINS];
+                rAcc += bk * col[0];
+                gAcc += bk * col[1];
+                bAcc += bk * col[2];
+              }
+            }
+            const boost = bVal > 0 ? Math.min(1.35, 0.22 + 0.95 * (bVal / K)) / bVal : 0;
+            dataB[pIdx]     = Math.min(255, Math.round(rAcc * boost));
+            dataB[pIdx + 1] = Math.min(255, Math.round(gAcc * boost));
+            dataB[pIdx + 2] = Math.min(255, Math.round(bAcc * boost));
+            dataB[pIdx + 3] = 255;
+          }
+
+          // 渲染營養鹽畫布 (Viridis)
+          const normC = Math.min(255, Math.max(0, Math.round(cVal * 255)));
+          const cLutIdx = normC * 3;
+          dataC[pIdx]     = VIRIDIS_LUT[cLutIdx];
+          dataC[pIdx + 1] = VIRIDIS_LUT[cLutIdx + 1];
+          dataC[pIdx + 2] = VIRIDIS_LUT[cLutIdx + 2];
+          dataC[pIdx + 3] = 255;
+        }
+      }
+
+      offCtxB.putImageData(imgDataB, 0, 0);
+      offCtxC.putImageData(imgDataC, 0, 0);
+
+      ctxBiomass.imageSmoothingEnabled = true;
+      ctxBiomass.clearRect(0, 0, canvasBiomass.width, canvasBiomass.height);
+      ctxBiomass.drawImage(offscreenB, 0, 0, canvasBiomass.width, canvasBiomass.height);
+
+      ctxNutrient.imageSmoothingEnabled = true;
+      ctxNutrient.clearRect(0, 0, canvasNutrient.width, canvasNutrient.height);
+      ctxNutrient.drawImage(offscreenC, 0, 0, canvasNutrient.width, canvasNutrient.height);
+
+      // 更新頂部與遙測數據
+      document.getElementById('statStep').textContent = stepCount;
+      document.getElementById('statTime').textContent = (stepCount * dt).toFixed(1);
+      document.getElementById('statMaxB').textContent = maxB.toFixed(3);
+      document.getElementById('badgeTotalB').textContent = sumB.toFixed(1);
+      document.getElementById('badgeMaxB').textContent = maxB.toFixed(2);
+
+      document.getElementById('metricTotalBiomass').textContent = sumB.toFixed(1);
+      document.getElementById('metricMeanNutrient').textContent = (sumC / dishCellCount).toFixed(3);
+      document.getElementById('metricCoverage').textContent = ((coveredCells / dishCellCount) * 100).toFixed(1) + '%';
+    }
+
+    // 8. 快照與遙測折線圖
+    function captureSnapshot() {
+      const thumbB = document.createElement('canvas');
+      thumbB.width = N; thumbB.height = N;
+      thumbB.getContext('2d').putImageData(imgDataB, 0, 0);
+
+      const thumbC = document.createElement('canvas');
+      thumbC.width = N; thumbC.height = N;
+      thumbC.getContext('2d').putImageData(imgDataC, 0, 0);
+
+      snapshots.push({
+        step: stepCount,
+        t: (stepCount * dt).toFixed(1),
+        urlB: thumbB.toDataURL(),
+        urlC: thumbC.toDataURL()
+      });
+    }
+
+    function renderSnapshotsStrip() {
+      const container = document.getElementById('snapshotsContainer');
+      container.innerHTML = '';
+      snapshots.forEach(snap => {
+        const card = document.createElement('div');
+        card.className = 'bg-slate-900/90 border border-slate-800 rounded-xl p-2 flex flex-col items-center gap-1.5';
+        card.innerHTML = `
+          <div class="text-[10px] font-mono text-slate-300 font-semibold">t = ${snap.t}</div>
+          <div class="grid grid-cols-2 gap-1 w-full">
+            <img src="${snap.urlB}" class="w-full aspect-square rounded-full border border-slate-700/80" title="Biomass t=${snap.t}" />
+            <img src="${snap.urlC}" class="w-full aspect-square rounded-full border border-slate-700/80" title="Nutrient t=${snap.t}" />
+          </div>
+          <div class="text-[9px] font-mono text-slate-500">step ${snap.step}</div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function recordTelemetry() {
+      let sumB = 0, sumC = 0;
+      for (let i = 0; i < dishIndices.length; i++) {
+        const idx = dishIndices[i];
+        sumB += totalB[idx];
+        sumC += nutrient[idx];
+      }
+      historyTelemetry.push({
+        biomass: sumB,
+        nutrient: sumC / dishCellCount
+      });
+      if (historyTelemetry.length > 160) historyTelemetry.shift();
+      drawTelemetryChart();
+    }
+
+    function drawTelemetryChart() {
+      const canvas = document.getElementById('canvasChart');
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.max(100, Math.round(rect.width * dpr));
+      const h = Math.max(60, Math.round(rect.height * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, w, h);
+
+      if (historyTelemetry.length < 2) return;
+
+      let maxBiomass = 10;
+      for (let i = 0; i < historyTelemetry.length; i++) {
+        if (historyTelemetry[i].biomass > maxBiomass) maxBiomass = historyTelemetry[i].biomass;
+      }
+
+      const len = historyTelemetry.length;
+      const stepX = w / (len - 1);
+
+      // 繪製營養鹽曲線 (0 ~ 1)
+      ctx.beginPath();
+      ctx.strokeStyle = '#2dd4bf';
+      ctx.lineWidth = 1.6 * dpr;
+      for (let i = 0; i < len; i++) {
+        const x = i * stepX;
+        const y = h - historyTelemetry[i].nutrient * (h - 8 * dpr) - 4 * dpr;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // 繪製總生物量曲線
+      ctx.beginPath();
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1.8 * dpr;
+      for (let i = 0; i < len; i++) {
+        const x = i * stepX;
+        const y = h - (historyTelemetry[i].biomass / maxBiomass) * (h - 8 * dpr) - 4 * dpr;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // 9. UI 控制與互動接種事件
+    function updateStrainsBadge() {
+      document.getElementById('activeStrainsCount').textContent = `${colonies.length} 株`;
+    }
+
+    function syncSlidersFromParams() {
+      document.getElementById('paramChi').value = params.chi;
+      document.getElementById('valChi').textContent = params.chi.toFixed(2);
+
+      document.getElementById('paramChM').value = params.M_ch;
+      document.getElementById('valChM').textContent = params.M_ch.toFixed(3);
+
+      document.getElementById('paramChKappa').value = params.kappa_ch;
+      document.getElementById('valChKappa').textContent = params.kappa_ch.toFixed(2);
+
+      document.getElementById('paramSigma').value = params.sigma_eta;
+      document.getElementById('valSigma').textContent = params.sigma_eta.toFixed(2);
+
+      document.getElementById('paramDb').value = params.Db;
+      document.getElementById('valDb').textContent = params.Db.toFixed(3);
+
+      document.getElementById('paramDc').value = params.Dc;
+      document.getElementById('valDc').textContent = params.Dc.toFixed(3);
+
+      document.getElementById('paramMu').value = params.mu_max;
+      document.getElementById('valMu').textContent = params.mu_max.toFixed(3);
+
+      document.getElementById('paramKc').value = params.Kc;
+      document.getElementById('valKc').textContent = params.Kc.toFixed(3);
+
+      document.getElementById('paramQ').value = params.q;
+      document.getElementById('valQ').textContent = params.q.toFixed(2);
+
+      document.getElementById('paramS').value = params.s;
+      document.getElementById('valS').textContent = params.s.toFixed(4);
+
+      document.getElementById('paramColonies').value = params.num_colonies;
+      document.getElementById('valColonies').textContent = params.num_colonies;
+    }
+
+    function bindSlider(id, key, valId, decimals, reseedOnChange = false) {
+      const el = document.getElementById(id);
+      const label = document.getElementById(valId);
+      el.addEventListener('input', () => {
+        const v = parseFloat(el.value);
+        params[key] = v;
+        label.textContent = decimals === 0 ? Math.round(v) : v.toFixed(decimals);
+        if (reseedOnChange) seedRandomColonies();
+      });
+    }
+
+    bindSlider('paramChi', 'chi', 'valChi', 2);
+    bindSlider('paramChM', 'M_ch', 'valChM', 3);
+    bindSlider('paramChKappa', 'kappa_ch', 'valChKappa', 2);
+    bindSlider('paramSigma', 'sigma_eta', 'valSigma', 2);
+    bindSlider('paramDb', 'Db', 'valDb', 3);
+    bindSlider('paramDc', 'Dc', 'valDc', 3);
+    bindSlider('paramMu', 'mu_max', 'valMu', 3);
+    bindSlider('paramKc', 'Kc', 'valKc', 3);
+    bindSlider('paramQ', 'q', 'valQ', 2);
+    bindSlider('paramS', 's', 'valS', 4);
+    bindSlider('paramColonies', 'num_colonies', 'valColonies', 0, true);
+
+    // 形態預設按鈕
+    function applyPreset(presetKey, activeBtnId) {
+      Object.assign(params, PRESETS[presetKey]);
+      syncSlidersFromParams();
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.className = 'preset-btn px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition';
+      });
+      const activeBtn = document.getElementById(activeBtnId);
+      activeBtn.className = 'preset-btn px-3 py-1.5 rounded-xl text-xs font-medium bg-sky-500/20 text-sky-300 border border-sky-500/40 transition';
+      seedRandomColonies();
+    }
+
+    document.getElementById('presetSmooth').addEventListener('click', () => applyPreset('smooth', 'presetSmooth'));
+    document.getElementById('presetDendritic').addEventListener('click', () => applyPreset('dendritic', 'presetDendritic'));
+    document.getElementById('presetFingers').addEventListener('click', () => applyPreset('fingers', 'presetFingers'));
+    document.getElementById('presetCahnHilliard').addEventListener('click', () => applyPreset('cahnHilliard', 'presetCahnHilliard'));
+
+    document.getElementById('btnResetParams').addEventListener('click', () => {
+      applyPreset('smooth', 'presetSmooth');
+    });
+
+    // 播放控制按鈕
+    document.getElementById('btnPlayPause').addEventListener('click', () => {
+      isRunning = !isRunning;
+      document.getElementById('iconPlay').classList.toggle('hidden', isRunning);
+      document.getElementById('iconPause').classList.toggle('hidden', !isRunning);
+      document.getElementById('textPlayPause').textContent = isRunning ? '暫停模擬' : '繼續模擬';
+    });
+
+    document.getElementById('btnStep').addEventListener('click', () => {
+      for (let i = 0; i < 10; i++) stepSimulation();
+      renderAll();
+    });
+
+    document.getElementById('btnReset').addEventListener('click', seedRandomColonies);
+    document.getElementById('btnClear').addEventListener('click', clearDish);
+    document.getElementById('btnCaptureSnapshot').addEventListener('click', () => {
+      renderAll();
+      captureSnapshot();
+      renderSnapshotsStrip();
+    });
+
+    document.getElementById('selectSpeed').addEventListener('change', (e) => {
+      stepsPerFrame = parseInt(e.target.value, 10) || 8;
+    });
+
+    // 視覺模式切換
+    document.getElementById('modeInferno').addEventListener('click', () => {
+      renderMode = 'inferno';
+      document.getElementById('modeInferno').className = 'px-2.5 py-1 rounded-lg font-medium transition bg-sky-500/20 text-sky-300 border border-sky-500/30';
+      document.getElementById('modeStrains').className = 'px-2.5 py-1 rounded-lg font-medium transition text-slate-400 hover:text-slate-200';
+      document.getElementById('biomassBadge').textContent = 'cmap: inferno';
+      document.getElementById('legendInferno').classList.remove('hidden');
+      document.getElementById('legendStrains').classList.add('hidden');
+      renderAll();
+    });
+
+    document.getElementById('modeStrains').addEventListener('click', () => {
+      renderMode = 'strains';
+      document.getElementById('modeStrains').className = 'px-2.5 py-1 rounded-lg font-medium transition bg-sky-500/20 text-sky-300 border border-sky-500/30';
+      document.getElementById('modeInferno').className = 'px-2.5 py-1 rounded-lg font-medium transition text-slate-400 hover:text-slate-200';
+      document.getElementById('biomassBadge').textContent = 'strains: fluorescent';
+      document.getElementById('legendInferno').classList.add('hidden');
+      document.getElementById('legendStrains').classList.remove('hidden');
+      renderAll();
+    });
+
+    // 培養皿點擊/拖曳接種與游標探針
+    function getGridCoordsFromEvent(canvas, clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const u = (clientX - rect.left) / rect.width;
+      const v = (clientY - rect.top) / rect.height;
+      const gx = Math.floor(u * N);
+      const gy = N - 1 - Math.floor(v * N);
+      const half = N >> 1;
+      return { gx, gy, cx: gx - half, cy: gy - half };
+    }
+
+    let isPointerDown = false;
+    let lastDropTime = 0;
+
+    [canvasBiomass, canvasNutrient].forEach(canvas => {
+      canvas.addEventListener('pointerdown', (e) => {
+        isPointerDown = true;
+        const { cx, cy } = getGridCoordsFromEvent(canvas, e.clientX, e.clientY);
+        if (cx * cx + cy * cy <= R * R) {
+          addColonyGaussian(cx, cy, 2.5, 0.25);
+          renderAll();
+          lastDropTime = performance.now();
+        }
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        const { gx, gy, cx, cy } = getGridCoordsFromEvent(canvas, e.clientX, e.clientY);
+        if (gx >= 0 && gx < N && gy >= 0 && gy < N) {
+          const idx = gy * N + gx;
+          if (mask[idx]) {
+            document.getElementById('probeReadout').textContent =
+              `座標 (${cx}, ${cy}) · 生物量 b = ${totalB[idx].toFixed(3)} · 營養鹽 c = ${nutrient[idx].toFixed(3)}`;
+            if (isPointerDown && performance.now() - lastDropTime > 90) {
+              addColonyGaussian(cx, cy, 2.2, 0.22);
+              renderAll();
+              lastDropTime = performance.now();
+            }
+          } else {
+            document.getElementById('probeReadout').textContent = '游標探針：培養皿邊界外 (No-Flux Wall)';
+          }
+        }
+      });
+    });
+
+    window.addEventListener('pointerup', () => { isPointerDown = false; });
+    window.addEventListener('resize', resizeCanvases);
+
+    // 10. 主動畫迴圈與 FPS 計數
+    let lastFpsTime = performance.now();
+    let frameCounter = 0;
+
+    function animateLoop(now) {
+      if (isRunning) {
+        for (let s = 0; s < stepsPerFrame; s++) {
+          stepSimulation();
+        }
+        renderAll();
+      }
+
+      frameCounter++;
+      if (now - lastFpsTime >= 500) {
+        const fps = Math.round((frameCounter * 1000) / (now - lastFpsTime));
+        document.getElementById('statFps').textContent = fps;
+        frameCounter = 0;
+        lastFpsTime = now;
+      }
+
+      requestAnimationFrame(animateLoop);
+    }
+
+    window.onload = function () {
+      syncSlidersFromParams();
+      seedRandomColonies();
+      resizeCanvases();
+      requestAnimationFrame(animateLoop);
+    };
+  </script>
+</body>
+</html>
