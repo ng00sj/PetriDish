@@ -1,7 +1,9 @@
 # 培養皿細菌生長網頁模擬
 ## 單一菌種生長模擬
 [連結：gemini_20261125.html](https://ng00sj.github.io/PetriDish/gemini_20261125)
+
 [連結：gemini_20261128.html](https://ng00sj.github.io/PetriDish/gemini_20261128)
+
 20261128更新：
 * 改成可以畫線撒菌（更像抹培養皿）。
 * 用 Latex 渲染所用公式（看起來舒服）。
