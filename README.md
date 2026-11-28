@@ -25,28 +25,24 @@
   * 細菌移動：擴散（受濕度影響）、聚集、相分離（Cahn-Hilliard Model）。
 
     ```math
-    \(\mu_{\text{ch}} = \underbrace{2\phi(1-\phi)(1-2\phi)}_{\text{雙井自由能導數 } f'(\phi)} - \underbrace{\kappa_{\text{ch}}\nabla^2\phi}_{\text{相界表面張力}}\)
+    \mu_{\text{ch}} = \underbrace{2\phi(1-\phi)(1-2\phi)}_{\text{雙井自由能導數 } f'(\phi)} - \underbrace{\kappa_{\text{ch}}\nabla^2\phi}_{\text{相界表面張力}}
     ```
 
   * 細菌衰亡：依賴於適應度。
 * 環境動態：pH 值、含氧量會受細菌改變，營養會補充、擴散、消耗。
 
   ```math
-  \(\frac{\partial (\text{pH})}{\partial t} = \underbrace{D_{\text{pH}} \nabla^2 (\text{pH})}_{\text{離子擴散}} + \underbrace{\alpha_{\text{pH}} \, \frac{c}{K_c + c} \, b_{\text{tot}}}_{\text{代謝產酸/產鹼}} + \underbrace{\beta_{\text{buf}} (\text{pH}_{\text{env}} - \text{pH})}_{\text{緩衝液平衡}}\)
-  ```
-  
-  ```math
-  \(\frac{\partial O_2}{\partial t} = \underbrace{D_{O_2} \nabla^2 O_2}_{\text{氧氣擴散}} - \underbrace{q_{O_2} \, \frac{c}{K_c + c} \frac{O_2}{K_{O_2} + O_2} \, b_{\text{tot}}}_{\text{好氧呼吸消耗}} + \underbrace{k_{La} (O_{2,\text{env}} - O_2)}_{\text{空氣溶氧補充}}\)
-  ```
-  
-  ```math
-  \(\frac{\partial c}{\partial t} = \underbrace{D_c \nabla^2 c}_{\text{營養擴散}} - \underbrace{q\,\mu(c)\,E(x,y)\,b_{\text{tot}}}_{\text{環境加權消耗}} + \underbrace{s(1 - c)}_{\text{基質補充}}, \qquad \mu(c) = \frac{\mu_{\max}\,c}{K_c + c}\)
+  \frac{\partial (\text{pH})}{\partial t} = \underbrace{D_{\text{pH}} \nabla^2 (\text{pH})}_{\text{離子擴散}} + \underbrace{\alpha_{\text{pH}} \, \frac{c}{K_c + c} \, b_{\text{tot}}}_{\text{代謝產酸/產鹼}} + \underbrace{\beta_{\text{buf}} (\text{pH}_{\text{env}} - \text{pH})}_{\text{緩衝液平衡}}
+
+  \frac{\partial O_2}{\partial t} = \underbrace{D_{O_2} \nabla^2 O_2}_{\text{氧氣擴散}} - \underbrace{q_{O_2} \, \frac{c}{K_c + c} \frac{O_2}{K_{O_2} + O_2} \, b_{\text{tot}}}_{\text{好氧呼吸消耗}} + \underbrace{k_{La} (O_{2,\text{env}} - O_2)}_{\text{空氣溶氧補充}}
+
+  \frac{\partial c}{\partial t} = \underbrace{D_c \nabla^2 c}_{\text{營養擴散}} - \underbrace{q\,\mu(c)\,E(x,y)\,b_{\text{tot}}}_{\text{環境加權消耗}} + \underbrace{s(1 - c)}_{\text{基質補充}}, \qquad \mu(c) = \frac{\mu_{\max}\,c}{K_c + c}
   ```
 
 * 適應度：依賴於 pH 值、含氧量、溫度、溼度。
 
   ```math
-  \(E(x,y) = \underbrace{f_T(T)}_{\text{溫度}} \cdot \underbrace{f_{\text{pH}}\big(\text{pH}(x,y)\big)}_{\text{局部酸鹼}} \cdot \underbrace{f_{O_2}\big(O_2(x,y)\big)}_{\text{局部含氧}} \cdot \underbrace{f_H(H)}_{\text{濕度}}\)
+  E(x,y) = \underbrace{f_T(T)}_{\text{溫度}} \cdot \underbrace{f_{\text{pH}}\big(\text{pH}(x,y)\big)}_{\text{局部酸鹼}} \cdot \underbrace{f_{O_2}\big(O_2(x,y)\big)}_{\text{局部含氧}} \cdot \underbrace{f_H(H)}_{\text{濕度}}
   ```
 
 ## 說明
